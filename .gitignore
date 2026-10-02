@@ -1,0 +1,14 @@
+# Build trees
+build/
+build-*/
+cmake-build-*/
+out/
+
+# Editor / OS cruft (the shipped .vscode/ configs are tracked on purpose)
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Debug captures written by --shot
+*.bmp

@@ -1,0 +1,55 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake Configure",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["-B", "build"],
+            "problemMatcher": [],
+            "detail": "Configure the project. First run downloads GLFW via FetchContent (needs Git + internet)."
+        },
+        {
+            "label": "Build maze",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--config", "Release", "-j"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$msCompile", "$gcc"],
+            "dependsOn": ["CMake Configure"],
+            "detail": "Default build task (Ctrl+Shift+B). Works with MSVC and MinGW kits."
+        },
+        {
+            "label": "Run maze (Visual Studio kit)",
+            "type": "shell",
+            "command": "build\\Release\\maze.exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "dependsOn": ["Build maze"],
+            "detail": "MSVC multi-config generators output to build\\Release\\."
+        },
+        {
+            "label": "Run maze (MinGW / Ninja kit)",
+            "type": "shell",
+            "command": "build\\maze.exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "dependsOn": ["Build maze"],
+            "detail": "Single-config generators (Ninja/MinGW Makefiles) output to build\\."
+        },
+        {
+            "label": "Clean rebuild",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build", "--config", "Release", "--target", "clean"],
+            "problemMatcher": []
+        }
+    ]
+}
