@@ -13,10 +13,14 @@
 //   * Minimap    - second orthographic pass into a corner of the viewport:
 //                  background quad, batched wall cells, player triangle and
 //                  exit marker.
+//   * HUD        - pixel-space controls hint in the bottom-left corner:
+//                  translucent panel plus 1-bit bitmap-font text (two
+//                  dynamic batches: solid panel, glyph quads).
 //   * Fade       - fullscreen NDC quad used by the exit sequence.
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include <glad/gl.h>
 
@@ -59,18 +63,42 @@ public:
 
 private:
     void createStaticGeometry();
+    void createFontAtlas();
+    void createHudGeometry();
     void releaseGpuObjects();
 
     void drawWorld(const FrameState& fs, const mat4& viewProj);
     void drawBeacon(const FrameState& fs, const mat4& viewProj);
     void drawMinimap(const FrameState& fs);
+    void drawHud(const FrameState& fs);
     void drawFade(const FrameState& fs);
+
+    // HUD batching (pixel-space, origin top-left). One struct per vertex:
+    // position + atlas UV + RGBA tint.
+    struct HudVertex {
+        float x, y, u, v;
+        float r, g, b, a;
+    };
+    void hudClear();
+    void hudQuad(float x0, float y0, float x1, float y1, float u0, float v0,
+                 float u1, float v1, float r, float g, float b, float a);
+    void hudSolidRect(float x, float y, float w, float h, const float rgb[3],
+                      float a);
+    // Draws "key" + gap + "label" starting at x; returns the pen x past it.
+    float hudEntry(const char* key, const char* label, float x, float y);
+    void uploadHudBatch(float solid);
 
     Shader mazeProg_;
     Shader flatProg_;
+    Shader hudProg_;
     Texture wallTex_;
     Texture floorTex_;
     Texture ceilTex_;
+    Texture fontTex_;       // 1-bit glyph atlas for the HUD (createR8)
+
+    GLuint hudVAO_ = 0;
+    GLuint hudVBO_ = 0;
+    std::vector<HudVertex> hudVerts_;
 
     GLuint cubeVAO_ = 0;
     GLuint cubeVBO_ = 0;

@@ -19,9 +19,12 @@ beacon. No game engine, no UI - just rendering, architecture and code quality.
   CPU from hash value-noise - the repo ships no binary assets
 - Dark torch-lit mood: flickering player point light, faint moonlight,
   exponential-squared distance fog, Blinn-Phong shading, MSAA x4
+- On-screen controls hint (bottom-left) rendered with a 1-bit bitmap font
+  generated from DejaVu Sans Mono at build time - still zero binary assets
 - Extras: pulsing exit beacon (visible down corridors), white-fade escape
-  sequence that rolls a fresh maze, top-down minimap overlay, adjustable
-  maze size, deterministic seeds, `--shot` debug screenshots
+  sequence that rolls a fresh maze, top-down minimap overlay (shown by
+  default), adjustable maze size, deterministic seeds, `--shot` debug
+  screenshots
 
 ## Building
 
@@ -56,20 +59,24 @@ Shift+F5 to run.
 | `W A S D`    | move / strafe                   |
 | `Shift`      | sprint                          |
 | Mouse        | look                            |
-| `M`          | toggle minimap                  |
+| `M`          | toggle minimap (shown by default) |
 | `R`          | regenerate the maze             |
 | `[` / `]`    | shrink / grow the maze          |
 | `Esc`        | quit                            |
 
+The same controls are always visible in the bottom-left corner of the
+game window.
+
 ## Command line
 
 ```text
-maze [--size N] [--seed N] [--minimap] [--shot PATH] [--frames N] [--at-exit]
+maze [--size N] [--seed N] [--minimap] [--no-minimap] [--shot PATH] [--frames N] [--at-exit]
 ```
 
 - `--size N`   corridor cells per side, 4..64 (grid is 2N+1), default 10
 - `--seed N`   deterministic maze seed (default: random)
-- `--minimap`  start with the minimap overlay visible
+- `--minimap`  start with the minimap overlay visible (default)
+- `--no-minimap` start without the minimap (M toggles it anytime)
 - `--shot P`   debug: render `--frames N`, write a BMP, exit
 - `--at-exit`  debug: spawn on the exit cell (exercises the win sequence)
 
@@ -78,7 +85,8 @@ maze [--size N] [--seed N] [--minimap] [--shot PATH] [--frames N] [--at-exit]
 ```text
 CMakeLists.txt      build definition (FetchContent for GLFW)
 external/glad/      generated OpenGL 3.3 core loader (header-only)
-shaders/            maze.vert/.frag (lit pass), flat.vert/.frag (unlit pass)
+shaders/            maze.vert/.frag (lit pass), flat.vert/.frag (unlit),
+                    hud.vert/.frag (bitmap-font overlay)
 src/
   main.cpp          CLI parsing, top-level error handling
   Application.*     frame loop, win-sequence state machine, shader lookup
@@ -86,9 +94,10 @@ src/
   Maze.*            grid model, backtracker generation, braiding, BFS exit
   Camera.hpp        yaw/pitch FPS camera (view/projection matrices)
   Player.*          movement, smoothing, circle-vs-grid collision
-  Renderer.*        instanced walls, floor/ceiling, beacon, minimap, fade
+  Renderer.*        instanced walls, floor/ceiling, beacon, minimap, HUD, fade
   Shader.*          program RAII + cached uniform locations
   Texture.*         procedural texture synthesis (hash noise, bricks, tiles)
+  FontAtlas.hpp     generated 1-bit HUD font (scripts/gen_font_atlas.py)
   Math.hpp          column-major vec/mat library (no GLM)
   Config.hpp        every tuning constant in one place
   DebugCapture.*    BMP screenshot helper for --shot

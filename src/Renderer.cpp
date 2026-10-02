@@ -1,9 +1,13 @@
 #include "Renderer.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
+#include "FontAtlas.hpp"
 #include "Math.hpp"
 
 namespace maze {
@@ -71,6 +75,21 @@ void bindPosOnlyAttrib(GLuint vbo) {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), reinterpret_cast<void*>(0));
 }
 
+// One line of the bottom-left controls hint: key + label up to two columns.
+struct HudLine {
+    const char* key1;
+    const char* label1;
+    const char* key2;   // nullptr = single-column row
+    const char* label2;
+};
+
+constexpr HudLine kHudLines[4] = {
+    { "WASD",  "Move",     "Shift", "Sprint"  },
+    { "Mouse", "Look",     "M",     "Minimap" },
+    { "R",     "New maze", "[ ]",   "Resize"  },
+    { "Esc",   "Quit",     nullptr, nullptr   },
+};
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -79,16 +98,22 @@ void bindPosOnlyAttrib(GLuint vbo) {
 Renderer::Renderer(const std::string& shaderDir)
     : mazeProg_(shaderDir + "/maze.vert", shaderDir + "/maze.frag"),
       flatProg_(shaderDir + "/flat.vert", shaderDir + "/flat.frag"),
+      hudProg_(shaderDir + "/hud.vert", shaderDir + "/hud.frag"),
       wallTex_(Texture::makeWallBricks()),
       floorTex_(Texture::makeFloorStones()),
       ceilTex_(Texture::makeCeiling()) {
     createStaticGeometry();
+    createFontAtlas();
+    createHudGeometry();
     glEnable(GL_MULTISAMPLE);
 }
 
 Renderer::~Renderer() { releaseGpuObjects(); }
 
 void Renderer::releaseGpuObjects() {
+    // fontTex_ is a Texture RAII object and releases itself.
+    glDeleteVertexArrays(1, &hudVAO_);
+    glDeleteBuffers(1, &hudVBO_);
     glDeleteVertexArrays(1, &cubeVAO_);
     glDeleteBuffers(1, &cubeVBO_);
     glDeleteBuffers(1, &instanceVBO_);
@@ -172,6 +197,47 @@ void Renderer::createStaticGeometry() {
     markersVBO_ = createVbo(9 * 3 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
     glBindVertexArray(markersVAO_);
     bindPosOnlyAttrib(markersVBO_);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+// Packs the generated 1-bit glyph table into a single-row GL_R8 atlas.
+void Renderer::createFontAtlas() {
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(font::kAtlasWidth) *
+                                     font::kAtlasHeight, 0);
+    for (int glyph = 0; glyph < font::kGlyphCount; ++glyph) {
+        for (int row = 0; row < font::kGlyphH; ++row) {
+            const std::size_t dst =
+                static_cast<std::size_t>(row) * font::kAtlasWidth +
+                static_cast<std::size_t>(glyph) * font::kGlyphW;
+            for (int col = 0; col < font::kGlyphW; ++col)
+                pixels[dst + col] = font::kGlyphs[glyph][row][col];
+        }
+    }
+    fontTex_ = Texture::createR8(font::kAtlasWidth, font::kAtlasHeight, pixels.data());
+}
+
+// Dynamic vertex stream for the HUD: pos(2) + uv(2) + color(4), rewritten
+// every frame with glBufferData orphaning. Only a few KB per frame.
+void Renderer::createHudGeometry() {
+    hudVAO_ = createVao();
+    glBindVertexArray(hudVAO_);
+    glGenBuffers(1, &hudVBO_);
+    glBindBuffer(GL_ARRAY_BUFFER, hudVBO_);
+    // No initial store needed - uploadHudBatch() orphans with glBufferData
+    // before every draw. Attrib pointers capture hudVBO_ as their source.
+
+    constexpr GLsizei kStride = static_cast<GLsizei>(sizeof(HudVertex));
+    glEnableVertexAttribArray(0); // aPos
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, kStride,
+                          reinterpret_cast<void*>(0));
+    glEnableVertexAttribArray(1); // aUV
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, kStride,
+                          reinterpret_cast<void*>(2 * sizeof(float)));
+    glEnableVertexAttribArray(2); // aColor
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, kStride,
+                          reinterpret_cast<void*>(4 * sizeof(float)));
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -270,6 +336,7 @@ void Renderer::drawFrame(const FrameState& fs) {
     drawWorld(fs, viewProj);
     drawBeacon(fs, viewProj);
     if (fs.showMinimap) drawMinimap(fs);
+    drawHud(fs);
     drawFade(fs);
 
     glBindVertexArray(0);
@@ -363,9 +430,11 @@ void Renderer::drawBeacon(const FrameState& fs, const mat4& viewProj) {
 }
 
 // ---------------------------------------------------------------------------
-// Minimap: orthographic top-down pass into a corner of the screen. Geometry
-// is pre-built in (worldX, worldZ, 0) form; a reversed top/bottom ortho flips
-// world Z so maze row 0 ends up at the top of the map.
+// Minimap: orthographic top-down pass into the top-right corner of the
+// screen. Geometry is pre-built in (worldX, worldZ, 0) form; a reversed
+// top/bottom ortho flips world Z so maze row 0 ends up at the top of the map.
+// NOTE: glViewport's origin is the BOTTOM-left, so y = height - size - margin
+// places the box a margin away from the TOP edge.
 // ---------------------------------------------------------------------------
 void Renderer::drawMinimap(const FrameState& fs) {
     const int size = static_cast<int>(static_cast<float>(
@@ -435,6 +504,140 @@ void Renderer::drawMinimap(const FrameState& fs) {
 
     // Restore main-view state.
     glViewport(0, 0, fs.viewportWidth, fs.viewportHeight);
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+}
+
+// ---------------------------------------------------------------------------
+// HUD: controls hint in the bottom-left corner. Two dynamic batches per frame
+// (solid panel rect, then glyph quads), both through the hud shader in
+// pixel-space with per-vertex color. Drawn before the fade overlay so the
+// escape sequence whites it out together with the rest of the scene.
+// ---------------------------------------------------------------------------
+void Renderer::hudClear() { hudVerts_.clear(); }
+
+void Renderer::hudQuad(float x0, float y0, float x1, float y1, float u0,
+                       float v0, float u1, float v1, float r, float g,
+                       float b, float a) {
+    const HudVertex verts[6] = {
+        { x0, y0, u0, v0, r, g, b, a },
+        { x1, y0, u1, v0, r, g, b, a },
+        { x1, y1, u1, v1, r, g, b, a },
+        { x0, y0, u0, v0, r, g, b, a },
+        { x1, y1, u1, v1, r, g, b, a },
+        { x0, y1, u0, v1, r, g, b, a },
+    };
+    hudVerts_.insert(hudVerts_.end(), verts, verts + 6);
+}
+
+void Renderer::hudSolidRect(float x, float y, float w, float h,
+                            const float rgb[3], float a) {
+    hudQuad(x, y, x + w, y + h, 0.0f, 0.0f, 0.0f, 0.0f,
+            rgb[0], rgb[1], rgb[2], a);
+}
+
+void Renderer::uploadHudBatch(float solid) {
+    if (hudVerts_.empty()) return;
+    glBindVertexArray(hudVAO_);
+    glBindBuffer(GL_ARRAY_BUFFER, hudVBO_);
+    glBufferData(GL_ARRAY_BUFFER,
+                 static_cast<GLsizeiptr>(hudVerts_.size() * sizeof(HudVertex)),
+                 hudVerts_.data(), GL_DYNAMIC_DRAW);
+    hudProg_.setFloat("uSolid", solid);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(hudVerts_.size()));
+}
+
+float Renderer::hudEntry(const char* key, const char* label, float x, float y) {
+    const float gw = static_cast<float>(font::kGlyphW);
+    const float gh = static_cast<float>(font::kGlyphH);
+    const float invW = 1.0f / static_cast<float>(font::kAtlasWidth);
+    const float eps = 0.01f * invW; // tiny u inset: avoids sampling the next glyph
+
+    const float keyWidth = static_cast<float>(std::strlen(key)) * gw;
+    const float keyX = x;
+    const float labelX = x + keyWidth + static_cast<float>(cfg::kHudKeyGapPx);
+
+    auto push = [&](const char* text, float px, const float rgb[3]) {
+        for (const char* p = text; *p; ++p, px += gw) {
+            const int glyph = static_cast<unsigned char>(*p) - font::kFirstChar;
+            if (glyph < 0 || glyph >= font::kGlyphCount) continue;
+            const float u0 = static_cast<float>(glyph) * gw * invW + eps;
+            const float u1 = static_cast<float>(glyph + 1) * gw * invW - eps;
+            // Data row 0 (the glyph top) lands at v = 0 after upload.
+            hudQuad(px, y, px + gw, y + gh, u0, 0.0f, u1, 1.0f,
+                    rgb[0], rgb[1], rgb[2], 1.0f);
+        }
+    };
+
+    push(key, keyX, cfg::kHudKeyColor);
+    if (label) push(label, labelX, cfg::kHudLabelColor);
+    return label ? labelX + static_cast<float>(std::strlen(label)) * gw : keyX + keyWidth;
+}
+
+void Renderer::drawHud(const FrameState& fs) {
+    const float w = static_cast<float>(fs.viewportWidth);
+    const float h = static_cast<float>(fs.viewportHeight);
+    if (w < 320.0f || h < 240.0f) return; // viewport too small to be readable
+
+    constexpr int kRows = static_cast<int>(std::size(kHudLines));
+    const float gw = static_cast<float>(font::kGlyphW);
+    const float gh = static_cast<float>(font::kGlyphH);
+    const float lineStep = static_cast<float>(cfg::kHudLineStepPx);
+    const float pad = static_cast<float>(cfg::kHudPanelPadPx);
+    const float col2 = static_cast<float>(cfg::kHudCol2OffsetPx);
+    const float gap = static_cast<float>(cfg::kHudKeyGapPx);
+
+    // Panel sized to fit the wider of (column 1, column 2) extents.
+    const float textH = static_cast<float>((kRows - 1) * cfg::kHudLineStepPx) + gh;
+    float contentW = col2;
+    for (const HudLine& line : kHudLines) {
+        const float col1W = (std::strlen(line.key1) + (line.label1 ? 1 : 0)) * gw +
+                            (line.label1 ? gap : 0.0f) +
+                            (line.label1 ? std::strlen(line.label1) * gw : 0.0f);
+        contentW = std::max(contentW, col1W);
+        if (line.key2) {
+            const float col2W = std::strlen(line.key2) * gw + gap +
+                                std::strlen(line.label2) * gw;
+            contentW = std::max(contentW, col2 + col2W);
+        }
+    }
+
+    const float panelW = 2.0f * pad + contentW;
+    const float panelH = textH + 2.0f * pad;
+    const float px = static_cast<float>(cfg::kHudMarginPx);
+    const float py = h - static_cast<float>(cfg::kHudMarginPx) - panelH;
+    const float x1 = px + pad;
+    const float x2 = x1 + col2;
+
+    hudProg_.bind();
+    hudProg_.setVec2("uResolution", w, h);
+    hudProg_.setInt("uFont", 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, fontTex_.id());
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Batch 1: translucent panel backdrop.
+    hudClear();
+    hudSolidRect(px, py, panelW, panelH, cfg::kHudPanelColor, cfg::kHudPanelAlpha);
+    uploadHudBatch(1.0f);
+
+    // Batch 2: text glyphs (keys and labels share the buffer via per-vertex
+    // color, so a single draw call covers both).
+    hudClear();
+    for (int i = 0; i < kRows; ++i) {
+        const float y = py + pad + static_cast<float>(i) * lineStep;
+        const HudLine& line = kHudLines[i];
+        hudEntry(line.key1, line.label1, x1, y);
+        if (line.key2) hudEntry(line.key2, line.label2, x2, y);
+    }
+    uploadHudBatch(0.0f);
+
+    glBindVertexArray(0);
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);

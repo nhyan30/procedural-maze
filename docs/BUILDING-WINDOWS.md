@@ -114,10 +114,11 @@ Lighter install (~1 GB) and GCC-identical warnings to the Linux build.
 A console window opens, then the game window:
 
 - Dark torch-lit maze, first-person view — **WASD** move, **mouse** look.
+- Controls hint stays in the bottom-left corner; minimap is top-right.
 - `M` minimap, `R` regenerate, `[` / `]` resize, `Esc` quit.
 - Try a deterministic seed for reproducible layouts:
   ```powershell
-  .\build\Release\maze.exe --size 16 --seed 42 --minimap
+  .\build\Release\maze.exe --size 16 --seed 42
   ```
 - Headless smoke test (no window needed, writes a BMP):
   ```powershell

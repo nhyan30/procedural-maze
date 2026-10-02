@@ -76,6 +76,17 @@ inline constexpr float kMinimapScreenFraction = 0.30f; // of smaller viewport ax
 inline constexpr int   kMinimapMarginPx       = 14;
 inline constexpr float kMinimapBgAlpha        = 0.88f;
 
+// --- HUD (controls hint, bottom-left) ---------------------------------------
+inline constexpr int   kHudMarginPx     = 14;  // panel inset from the corner
+inline constexpr int   kHudPanelPadPx   = 12;  // inner padding around the text
+inline constexpr int   kHudLineStepPx   = 26;  // row pitch (glyph height + gap)
+inline constexpr int   kHudCol2OffsetPx = 150; // x offset of the second column
+inline constexpr int   kHudKeyGapPx     = 10;  // gap between a key and its label
+inline constexpr float kHudPanelAlpha   = 0.62f;
+inline constexpr float kHudPanelColor[3] = { 0.02f, 0.025f, 0.035f };
+inline constexpr float kHudKeyColor[3]   = { 1.00f, 0.83f, 0.47f };
+inline constexpr float kHudLabelColor[3] = { 0.85f, 0.87f, 0.90f };
+
 // --- Window -----------------------------------------------------------------
 inline constexpr int kInitialWidth  = 1280;
 inline constexpr int kInitialHeight = 720;

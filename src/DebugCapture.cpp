@@ -16,6 +16,8 @@ bool saveScreenshotBMP(const std::string& path, int width, int height) {
     glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
 
     // BMP rows are bottom-up, BGR, and padded to 4-byte boundaries.
+    // glReadPixels also returns rows bottom-up (row 0 = framebuffer bottom),
+    // so file row y maps to buffer row y directly - no extra flip.
     const int rowBytes = width * 3;
     const int paddedRow = (rowBytes + 3) & ~3;
     const std::uint32_t dataSize =
@@ -46,7 +48,7 @@ bool saveScreenshotBMP(const std::string& path, int width, int height) {
     put32(34, dataSize);
 
     for (int y = 0; y < height; ++y) {
-        const std::size_t srcRow = static_cast<std::size_t>(height - 1 - y) * rowBytes;
+        const std::size_t srcRow = static_cast<std::size_t>(y) * rowBytes;
         std::uint8_t* dst = file.data() + 14 + 40 +
                             static_cast<std::size_t>(y) * paddedRow;
         for (int x = 0; x < width; ++x) {

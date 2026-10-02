@@ -25,6 +25,15 @@ bool fileExists(const std::string& path) {
     return f.good();
 }
 
+// Debug/testing hook: when MAZE_FORCE_REGEN_FRAME=N is set, the app performs
+// an R-style regeneration at frame N. Lets automated headless runs exercise
+// the rebuild path (the same code path as pressing R / [ / ]).
+int envForceRegenFrame() {
+    const char* e = std::getenv("MAZE_FORCE_REGEN_FRAME");
+    if (!e || *e == '\0') return -1;
+    return std::max(0, std::atoi(e));
+}
+
 } // namespace
 
 // Shader lookup order: environment override, working directory, then the
@@ -77,8 +86,19 @@ void Application::rebuildMaze(int cellsPerSide, std::uint64_t seed, bool fadeIn)
     maze_->resize(cellsPerSide, seed);
     renderer_.build(*maze_);
     player_.spawnAtCell(*maze_, maze_->startCell());
-    phase_ = Phase::Exploring;
-    whiteFade_ = fadeIn ? 1.0f : 0.0f;
+
+    if (fadeIn) {
+        // R / resize: the rebuild happens instantly under full white, and the
+        // FadeIn phase ramps the overlay back out. Phase MUST be FadeIn here -
+        // whiteFade_ is only ever decremented by the FadeIn branch below.
+        whiteFade_ = 1.0f;
+        phase_ = Phase::FadeIn;
+    } else {
+        // Win path: FadeOut already ramped whiteFade_ to ~1, so leave it as-is
+        // and let the caller switch to FadeIn for a smooth fade-in of the new
+        // maze (resetting to 0 here would produce a hard cut).
+        phase_ = Phase::Exploring;
+    }
 
     std::printf("[maze] %dx%d grid, seed %llu\n", maze_->gridSize(), maze_->gridSize(),
                 static_cast<unsigned long long>(seed));
@@ -168,6 +188,7 @@ void Application::renderFrame(double time) {
 
 void Application::run() {
     auto lastFrame = nowClock();
+    const int forceRegenFrame = envForceRegenFrame();
 
     while (!window_.shouldClose()) {
         const float dt = std::min(secondsSince(lastFrame), 0.1f);
@@ -176,6 +197,9 @@ void Application::run() {
         window_.pollEvents();
         handleInput();
         if (window_.shouldClose()) break;
+
+        if (forceRegenFrame >= 0 && frameIndex_ == forceRegenFrame)
+            rebuildMaze(maze_->cellsPerSide(), nextSeed(), true);
 
         player_.update(*maze_, window_.input(), dt);
         updateExitSequence(dt);

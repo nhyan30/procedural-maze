@@ -26,7 +26,8 @@ void printUsage() {
         "  --shot PATH     debug: render --frames N, write a BMP screenshot, exit\n"
         "  --frames N      frame count for --shot (default 30)\n"
         "  --at-exit       debug: spawn on the exit cell (tests the win sequence)\n"
-        "  --minimap       start with the minimap overlay visible\n"
+        "  --minimap       start with the minimap overlay visible (default)\n"
+        "  --no-minimap    start without the minimap overlay (M toggles it)\n"
         "  --help          show this message\n"
         "\n"
         "Controls:\n"
@@ -84,6 +85,8 @@ bool parseArgs(int argc, char** argv, maze::Options& options, bool& showHelp) {
                 options.spawnAtExit = true;
             } else if (arg == "--minimap") {
                 options.minimapOn = true;
+            } else if (arg == "--no-minimap") {
+                options.minimapOn = false;
             } else if (arg == "--frames") {
                 const char* v = value();
                 if (!v) { std::fprintf(stderr, "error: %s needs a value\n", arg.c_str()); return false; }

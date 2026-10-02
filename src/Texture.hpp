@@ -27,6 +27,10 @@ public:
     // trilinear filtering with anisotropic filtering when available.
     static Texture createRgba(int width, int height, const PixelFn& generator);
 
+    // Builds a single-channel (GL_R8) texture with NEAREST filtering and
+    // clamp-to-edge wrap - used by the bitmap-font HUD atlas. No mipmaps.
+    static Texture createR8(int width, int height, const std::uint8_t* pixels);
+
     // Procedural materials (deterministic - identical on every machine).
     static Texture makeWallBricks();
     static Texture makeFloorStones();

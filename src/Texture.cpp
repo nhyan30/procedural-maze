@@ -110,6 +110,23 @@ Texture Texture::createRgba(int width, int height, const PixelFn& generator) {
     return t;
 }
 
+// Single-channel (GL_R8) atlas texture: NEAREST keeps 1-bit glyph pixels
+// crisp, clamp-to-edge prevents wrap artifacts at the atlas borders.
+Texture Texture::createR8(int width, int height, const std::uint8_t* pixels) {
+    Texture t;
+    glGenTextures(1, &t.texture_);
+    glBindTexture(GL_TEXTURE_2D, t.texture_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0,
+                 GL_RED, GL_UNSIGNED_BYTE, pixels);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return t;
+}
+
 void Texture::bind(GLuint unit) const {
     glActiveTexture(GL_TEXTURE0 + unit);
     glBindTexture(GL_TEXTURE_2D, texture_);

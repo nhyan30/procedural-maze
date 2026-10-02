@@ -28,8 +28,9 @@ struct Options {
     // Debug: spawn the player on the exit cell (exercises the win sequence).
     bool spawnAtExit = false;
 
-    // Start with the minimap visible (otherwise toggled with M).
-    bool minimapOn = false;
+    // Minimap overlay state at startup. Shown by default; M toggles it,
+    // --no-minimap starts hidden.
+    bool minimapOn = true;
 };
 
 class Application {
